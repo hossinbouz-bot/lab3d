@@ -333,6 +333,7 @@ button.code{cursor:pointer;font-family:var(--f-mono)}
 /* GitHub Pages build: the queue lives in queue.json; the admin tab saves it through the GitHub API. */
 const TITLE='תלת-ממד למעבדות';
 const QUEUE_FILE='queue.json';
+const MAIL_HOOK='https://script.google.com/macros/s/AKfycbzKGmUihXYvB2RniVVZSfnLSdhp5Y7DOTzyyjDiqbck4a5pZwrdSQ56QkNYI8AqYKAp/exec';
 
 /* ---------- helpers ---------- */
 const $=(s,r)=>(r||document).querySelector(s);
@@ -808,6 +809,7 @@ function submitRequest(){
   d.touchText=d.touches.map(t=>t==='chem'&&d.chemtext?TOUCH_BY[t].short+' ('+d.chemtext+')':TOUCH_BY[t].short).join('; ');
   saveDraft();
   lastReq=d;
+  notifyMail(d);
   const msg=buildMessage(d),S=state.settings;
   const href=(S.wa?'https://wa.me/'+S.wa:'https://wa.me/')+'?text='+encodeURIComponent(msg);
   const who=S.coordinator?' ל'+esc(S.coordinator):'';
@@ -818,6 +820,7 @@ function submitRequest(){
 <div class="actions"><a class="btn primary" id="wa-btn" href="${esc(href)}" target="_blank" rel="noopener noreferrer" data-act="wa">${ICON.chat}פתיחה בוואטסאפ</a><button class="btn ghost" type="button" data-act="copy">${ICON.copy}העתקת ההודעה</button></div>
 <p class="hint" id="copy-state" aria-live="polite"></p>
 <ul class="next">
+  ${MAIL_HOOK?'<li>עותק של הבקשה נשלח אוטומטית במייל לרכז ההדפסה.</li>':''}
   <li>אחרי השליחה: צרפו בוואטסאפ תמונה של העמדה או של הפריט, בלי פרטי מטופלים.</li>
   <li>אם וואטסאפ לא נפתח, העתיקו את ההודעה והדביקו אותה בצ׳אט${who}.</li>
   ${S.wa?'':'<li>מספר הקבלה עוד לא הוגדר בעמוד, ולכן וואטסאפ ייפתח עם בחירת איש קשר.</li>'}
@@ -825,6 +828,19 @@ function submitRequest(){
 <div class="actions"><button class="btn ghost sm" type="button" data-act="edit-again">חזרה לעריכה</button><button class="btn ghost sm" type="button" data-act="new-again">בקשה חדשה</button></div>`;
   $('#msg').value=msg;
   $('#req').hidden=true;out.hidden=false;window.scrollTo(0,0);
+}
+function notifyMail(d){
+  if(!MAIL_HOOK)return;
+  const payload={code:d.code,dept:deptName(d.dept),site:d.site,name:d.name,type:TYPE_L[d.type],item:d.itemTitle,problem:d.problem,dims:d.dims,qty:d.qty,due:fmtDate(d.due),touches:d.touchText,risk:RISK[d.risk].label,link:d.link,sentAt:fmtDateTime(new Date().toISOString()),page:location.origin+location.pathname};
+  const sig=JSON.stringify(payload).replace(/"sentAt":"[^"]*",?/,'');
+  let sent=ls.get('mailed',{});if(!sent||typeof sent!=='object')sent={};
+  const prev=sent[d.code];
+  if(prev&&prev.sig===sig)return;
+  payload.rev=prev?(prev.rev||0)+1:0;
+  sent[d.code]={sig,rev:payload.rev};
+  const keys=Object.keys(sent);if(keys.length>40)keys.slice(0,keys.length-40).forEach(k=>delete sent[k]);
+  ls.set('mailed',sent);
+  try{fetch(MAIL_HOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),keepalive:true}).catch(()=>{});}catch(e){}
 }
 function rememberMine(){
   if(!lastReq)return;
